@@ -132,6 +132,18 @@
       color: #f85149;
     }
 
+    #output .args-header {
+      color: #8b949e;
+      font-size: 0.85em;
+    }
+
+    #output .arg-flag {
+      color: #3fb950;
+      font-weight: bold;
+      display: inline-block;
+      min-width: 12ch;
+    }
+
     footer {
       margin-top: 3rem;
       color: #484f58;
@@ -367,35 +379,146 @@
     };
 
     // ---------------------------------------------------------------------------
+    // Command data (loaded from data files derived from man pages)
+    // To add support for a new command: create data/<cmd>.json and add the
+    // command name to COMMANDS_WITH_DATA below.
+    // ---------------------------------------------------------------------------
+
+    /** Commands that have a corresponding data file in data/<cmd>.json. */
+    const COMMANDS_WITH_DATA = new Set(["ls"]);
+
+    /** Cache for loaded command data (null = not available or failed to load). */
+    const commandDataCache = new Map();
+
+    /**
+     * Async-load the data file for a command.
+     * Returns the parsed JSON object on success, or null on failure.
+     * Falls back gracefully if the file is absent or the fetch fails.
+     */
+    async function loadCommandData(cmd) {
+      if (commandDataCache.has(cmd)) return commandDataCache.get(cmd);
+      if (!COMMANDS_WITH_DATA.has(cmd)) {
+        commandDataCache.set(cmd, null);
+        return null;
+      }
+      try {
+        const resp = await fetch(`data/${cmd}.json`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        commandDataCache.set(cmd, data);
+        return data;
+      } catch (_) {
+        commandDataCache.set(cmd, null);
+        return null;
+      }
+    }
+
+    // ---------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------
 
-    /** Extract the base command from an input string. */
-    function parseBaseCommand(input) {
+    /**
+     * Parse a command-line string into its component parts.
+     * Returns { command, flags, positionals } or null if the input is empty.
+     *
+     * Handles:
+     *   - Leading "sudo" (stripped before identifying the command)
+     *   - Short flag clusters  (-la  →  -l, -a)
+     *   - Long flags           (--all, --color=always  →  --all, --color)
+     *   - End-of-flags marker  (--)
+     *   - Bare shell operators (|, >, &&, etc.)
+     */
+    function parseCommandLine(input) {
       const trimmed = input.trim();
       if (!trimmed) return null;
-      // Handle common shell redirections / operators entered on their own
+
+      // Handle bare shell operators entered on their own
       for (const op of ["|", ">", ">>", "<", "2>", "&&", "||", "&", ";"]) {
-        if (trimmed === op) return op;
+        if (trimmed === op) return { command: op, flags: [], positionals: [] };
       }
-      // Drop leading "sudo" to get the real command
+
       const tokens = trimmed.split(/\s+/);
+      let cmdIdx = 0;
+
+      // Strip leading "sudo"
       if (tokens[0].toLowerCase() === "sudo" && tokens.length > 1) {
-        return tokens[1].toLowerCase();
+        cmdIdx = 1;
       }
-      return tokens[0].toLowerCase();
+
+      const command = tokens[cmdIdx].toLowerCase();
+      const flags = [];
+      const positionals = [];
+      let endOfFlags = false;
+
+      for (let i = cmdIdx + 1; i < tokens.length; i++) {
+        const t = tokens[i];
+        if (endOfFlags) {
+          positionals.push(t);
+        } else if (t === "--") {
+          endOfFlags = true;
+        } else if (t.startsWith("--")) {
+          // Long flag — strip =value if present (e.g. --color=always → --color)
+          const eqIdx = t.indexOf("=");
+          flags.push(eqIdx !== -1 ? t.slice(0, eqIdx) : t);
+        } else if (t.startsWith("-") && t.length > 1) {
+          const chars = t.slice(1);
+          if (chars.length === 1) {
+            // Single short flag: -l, -a, -1
+            flags.push(t);
+          } else if (/^[a-zA-Z]+$/.test(chars)) {
+            // Pure-alpha cluster: -la → -l, -a
+            for (const ch of chars) {
+              flags.push(`-${ch}`);
+            }
+          }
+          // Mixed alpha-numeric (e.g. -w80): skip — the attached value isn't a flag
+        } else {
+          positionals.push(t);
+        }
+      }
+
+      return { command, flags, positionals };
     }
 
-    /** Build the HTML explanation for a command string. */
-    function explain(rawInput) {
-      const base = parseBaseCommand(rawInput);
-      if (!base) return null;
+    /** Build the HTML explanation for a command string (async for data-file lookup). */
+    async function explain(rawInput) {
+      const parsed = parseCommandLine(rawInput);
+      if (!parsed) return null;
 
-      const description = COMMANDS[base];
-      if (description) {
-        return `<span class="cmd-name">${escHtml(base)}</span>\n${escHtml(description)}`;
+      const { command, flags } = parsed;
+      const description = COMMANDS[command];
+
+      if (!description) {
+        return `<span class="unknown">Unknown command: <strong>${escHtml(command)}</strong></span>\nNo explanation available yet. Try a common Unix command.`;
       }
-      return `<span class="unknown">Unknown command: <strong>${escHtml(base)}</strong></span>\nNo explanation available yet. Try a common Unix command.`;
+
+      let html = `<span class="cmd-name">${escHtml(command)}</span>\n${escHtml(description)}`;
+
+      // When the command has flags and a data file, annotate each recognized flag.
+      if (flags.length > 0) {
+        const data = await loadCommandData(command);
+        if (data && data.options) {
+          const argLines = [];
+          // Deduplicate flags while preserving order
+          const seen = new Set();
+          for (const flag of flags) {
+            if (seen.has(flag)) continue;
+            seen.add(flag);
+            const desc = data.options[flag];
+            if (desc) {
+              argLines.push(
+                `  <span class="arg-flag">${escHtml(flag)}</span>  ${escHtml(desc)}`
+              );
+            }
+            // Silently skip flags not found in the data file (graceful fallback)
+          }
+          if (argLines.length > 0) {
+            html += `\n\n<span class="args-header">Arguments:</span>\n${argLines.join("\n")}`;
+          }
+        }
+      }
+
+      return html;
     }
 
     function escHtml(str) {
@@ -415,8 +538,8 @@
     const explainBtn = document.getElementById("explain-btn");
     const clearBtn  = document.getElementById("clear-btn");
 
-    function runExplain() {
-      const html = explain(input.value);
+    async function runExplain() {
+      const html = await explain(input.value);
       if (!html) {
         output.className = "empty";
         output.innerHTML = "Your explanation will appear here.";
