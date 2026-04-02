@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>what-the-shell</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d1117;
+      color: #c9d1d9;
+      font-family: "Courier New", Courier, monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+
+    header {
+      margin-bottom: 2rem;
+      text-align: center;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      color: #58a6ff;
+      letter-spacing: 0.05em;
+    }
+
+    header p {
+      margin-top: 0.5rem;
+      color: #8b949e;
+      font-size: 0.9rem;
+    }
+
+    .terminal {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      width: 100%;
+      max-width: 720px;
+      padding: 1.5rem;
+    }
+
+    .prompt-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .prompt-sign {
+      color: #3fb950;
+      font-size: 1.1rem;
+      user-select: none;
+    }
+
+    #command-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #e6edf3;
+      font-family: inherit;
+      font-size: 1rem;
+      caret-color: #58a6ff;
+    }
+
+    #command-input::placeholder {
+      color: #484f58;
+    }
+
+    .btn-row {
+      margin-top: 1rem;
+      display: flex;
+      gap: 0.75rem;
+    }
+
+    button {
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      font-family: inherit;
+      font-size: 0.9rem;
+      padding: 0.4rem 1rem;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    button:hover {
+      background: #30363d;
+      border-color: #8b949e;
+    }
+
+    button#explain-btn {
+      background: #1f6feb;
+      border-color: #1f6feb;
+      color: #fff;
+    }
+
+    button#explain-btn:hover {
+      background: #388bfd;
+      border-color: #388bfd;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #21262d;
+      margin: 1.25rem 0;
+    }
+
+    #output {
+      min-height: 4rem;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    #output.empty {
+      color: #484f58;
+    }
+
+    #output .cmd-name {
+      color: #58a6ff;
+      font-weight: bold;
+    }
+
+    #output .unknown {
+      color: #f85149;
+    }
+
+    footer {
+      margin-top: 3rem;
+      color: #484f58;
+      font-size: 0.8rem;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>what-the-shell</h1>
+    <p>Paste or type a shell command to get a plain-English explanation.</p>
+  </header>
+
+  <div class="terminal">
+    <div class="prompt-row">
+      <span class="prompt-sign">$</span>
+      <input
+        id="command-input"
+        type="text"
+        placeholder="ls -la /home/user"
+        autocomplete="off"
+        spellcheck="false"
+      />
+    </div>
+
+    <div class="btn-row">
+      <button id="explain-btn" type="button">Explain</button>
+      <button id="clear-btn" type="button">Clear</button>
+    </div>
+
+    <hr class="divider" />
+
+    <div id="output" class="empty">Your explanation will appear here.</div>
+  </div>
+
+  <footer>
+    <a href="https://github.com/DanBurton/what-the-shell" style="color:inherit;">
+      github.com/DanBurton/what-the-shell
+    </a>
+  </footer>
+
+  <script>
+    // ---------------------------------------------------------------------------
+    // Command dictionary
+    // Each key is the base command name (lowercase).
+    // Values are plain-English descriptions.
+    // ---------------------------------------------------------------------------
+    const COMMANDS = {
+      ls:      "List the contents of a directory.",
+      cd:      "Change the current working directory.",
+      pwd:     "Print the full path of the current working directory.",
+      mkdir:   "Create a new directory.",
+      rmdir:   "Remove an empty directory.",
+      rm:      "Remove (delete) files or directories.",
+      cp:      "Copy files or directories from one location to another.",
+      mv:      "Move or rename files and directories.",
+      cat:     "Concatenate and display the contents of files.",
+      less:    "View file contents one screen at a time (scrollable, read-only).",
+      more:    "View file contents one screen at a time (forward-only).",
+      head:    "Display the first lines of a file (default: 10).",
+      tail:    "Display the last lines of a file (default: 10).",
+      touch:   "Update a file's timestamps, or create an empty file if it doesn't exist.",
+      echo:    "Print text or variable values to the terminal.",
+      printf:  "Format and print data to the terminal.",
+      grep:    "Search for lines matching a pattern in files or input.",
+      find:    "Search for files and directories matching given criteria.",
+      locate:  "Quickly find files by name using a pre-built index database.",
+      which:   "Show the full path of a command's executable.",
+      whereis: "Locate the binary, source, and manual page for a command.",
+      wc:      "Count lines, words, and bytes in files.",
+      sort:    "Sort lines of text alphabetically or numerically.",
+      uniq:    "Filter out (or report) adjacent duplicate lines.",
+      cut:     "Extract selected columns or fields from lines of text.",
+      paste:   "Merge lines of files side by side.",
+      tr:      "Translate or delete characters in text.",
+      awk:     "A powerful pattern-scanning and text-processing language.",
+      sed:     "Stream editor — transform text using substitution and other commands.",
+      diff:    "Compare files line by line and show differences.",
+      patch:   "Apply a diff (patch) file to update source files.",
+      tar:     "Create or extract archive (.tar) files.",
+      gzip:    "Compress files using the gzip algorithm.",
+      gunzip:  "Decompress gzip-compressed files.",
+      zip:     "Create a zip archive.",
+      unzip:   "Extract files from a zip archive.",
+      chmod:   "Change the read/write/execute permissions of files or directories.",
+      chown:   "Change the owner and/or group of files or directories.",
+      chgrp:   "Change the group ownership of files or directories.",
+      umask:   "Set the default permission mask for newly created files.",
+      ln:      "Create hard or symbolic links between files.",
+      df:      "Report the amount of disk space used and available on filesystems.",
+      du:      "Estimate the disk space used by files and directories.",
+      mount:   "Attach a filesystem to a directory in the filesystem tree.",
+      umount:  "Detach a mounted filesystem.",
+      ps:      "Display a snapshot of currently running processes.",
+      top:     "Interactively display real-time process and system resource usage.",
+      htop:    "An interactive, colourful process viewer (enhanced version of top).",
+      kill:    "Send a signal (by default SIGTERM) to a process to terminate it.",
+      killall: "Send a signal to all processes with a given name.",
+      pkill:   "Send a signal to processes matching a name or other criteria.",
+      jobs:    "List the active background jobs in the current shell session.",
+      bg:      "Resume a suspended job in the background.",
+      fg:      "Bring a background or suspended job to the foreground.",
+      nohup:   "Run a command immune to hangups (keeps running after logout).",
+      nice:    "Run a command with a modified scheduling priority.",
+      renice:  "Change the priority of a running process.",
+      sleep:   "Pause execution for a specified number of seconds (or other units).",
+      wait:    "Wait for background processes to finish.",
+      time:    "Measure how long a command takes to run.",
+      date:    "Display or set the system date and time.",
+      cal:     "Display a calendar.",
+      uptime:  "Show how long the system has been running and the load average.",
+      whoami:  "Print the current user's login name.",
+      who:     "Show who is logged in to the system.",
+      w:       "Show who is logged in and what they are doing.",
+      id:      "Print the user and group IDs for the current user.",
+      su:      "Switch to another user account (default: root).",
+      sudo:    "Execute a command as another user, typically the superuser (root).",
+      passwd:  "Change a user account's password.",
+      useradd: "Create a new user account.",
+      userdel: "Delete a user account.",
+      usermod: "Modify an existing user account.",
+      groupadd: "Create a new group.",
+      env:     "Display or modify environment variables, or run a command in a custom environment.",
+      export:  "Mark a shell variable for export to child processes as an environment variable.",
+      unset:   "Remove a shell variable or function.",
+      source:  "Execute commands from a file in the current shell (same as the dot command).",
+      ".":     "Execute commands from a file in the current shell (same as source).",
+      alias:   "Create a shortcut (alias) for a command.",
+      unalias: "Remove a previously defined alias.",
+      history: "Display the command history list.",
+      clear:   "Clear the terminal screen.",
+      reset:   "Re-initialize the terminal to a clean state.",
+      man:     "Display the manual (help) page for a command.",
+      info:    "Display documentation using the Info system.",
+      help:    "Display help for shell built-in commands.",
+      type:    "Describe how a name would be interpreted by the shell.",
+      exit:    "Exit the current shell session.",
+      logout:  "Log out of the current login shell.",
+      shutdown:"Shut down or restart the system.",
+      reboot:  "Reboot the system.",
+      ping:    "Send ICMP echo requests to test network connectivity to a host.",
+      curl:    "Transfer data from or to a server using various network protocols.",
+      wget:    "Download files from the internet non-interactively.",
+      ssh:     "Open a secure encrypted shell connection to a remote host.",
+      scp:     "Securely copy files between hosts over SSH.",
+      rsync:   "Efficiently synchronize files and directories locally or over a network.",
+      ftp:     "Transfer files using the File Transfer Protocol.",
+      sftp:    "Interactively transfer files over SSH.",
+      nc:      "Netcat — read from and write to network connections (TCP/UDP).",
+      netstat: "Display network connections, routing tables, and interface statistics.",
+      ss:      "Display socket statistics (modern replacement for netstat).",
+      ifconfig:"Configure or display network interface parameters.",
+      ip:      "Show or manipulate network interfaces, routing, and tunnels.",
+      nslookup:"Query DNS servers for domain name or IP address information.",
+      dig:     "DNS lookup utility — query DNS name servers for information.",
+      host:    "DNS lookup utility — convert names to IP addresses and vice versa.",
+      traceroute:"Trace the network path packets take to reach a host.",
+      git:     "Distributed version control system — track changes and collaborate on code.",
+      docker:  "Manage containers, images, networks, and volumes with Docker.",
+      kubectl: "Command-line tool for controlling Kubernetes clusters.",
+      npm:     "Node.js package manager — install, manage, and run JavaScript packages.",
+      npx:     "Run Node.js package executables without installing them globally.",
+      yarn:    "Fast, reliable JavaScript package manager (alternative to npm).",
+      pip:     "Python package installer — install and manage Python libraries.",
+      python:  "Run the Python interpreter or execute a Python script.",
+      python3: "Run the Python 3 interpreter or execute a Python 3 script.",
+      node:    "Run the Node.js JavaScript runtime.",
+      ruby:    "Run the Ruby interpreter or execute a Ruby script.",
+      perl:    "Run the Perl interpreter or execute a Perl script.",
+      java:    "Run a compiled Java program via the JVM.",
+      javac:   "Compile Java source code files into bytecode.",
+      make:    "Build and compile programs using rules defined in a Makefile.",
+      gcc:     "GNU C Compiler — compile C source code into an executable.",
+      "g++":   "GNU C++ Compiler — compile C++ source code into an executable.",
+      clang:   "LLVM C/C++ compiler front end.",
+      go:      "Build, test, and manage Go language programs.",
+      cargo:   "Rust's package manager and build system.",
+      rustc:   "Compile Rust source code.",
+      apt:     "High-level package manager for Debian/Ubuntu systems.",
+      "apt-get":"Low-level package manager for Debian/Ubuntu systems.",
+      yum:     "Package manager for older Red Hat/CentOS systems.",
+      dnf:     "Package manager for modern Fedora/Red Hat systems.",
+      pacman:  "Package manager for Arch Linux.",
+      brew:    "Homebrew — package manager for macOS (and Linux).",
+      snap:    "Install and manage snap packages.",
+      flatpak: "Install and manage Flatpak application packages.",
+      cron:    "Daemon that runs scheduled commands (cron jobs).",
+      crontab: "View or edit the cron job table for the current user.",
+      systemctl:"Control the systemd system and service manager.",
+      service: "Start, stop, or check the status of system services (SysV init wrapper).",
+      journalctl:"Query and display logs from the systemd journal.",
+      dmesg:   "Print or control the kernel ring buffer (boot and hardware messages).",
+      lsof:    "List open files and the processes that opened them.",
+      strace:  "Trace system calls and signals made by a process.",
+      ltrace:  "Trace library calls made by a process.",
+      ldd:     "Print shared library dependencies of an executable.",
+      file:    "Determine the type of a file.",
+      stat:    "Display detailed file or filesystem status information.",
+      md5sum:  "Compute or verify MD5 checksums of files.",
+      sha256sum:"Compute or verify SHA-256 checksums of files.",
+      openssl: "Cryptography toolkit — generate keys, certificates, and encrypt/decrypt data.",
+      base64:  "Encode or decode data using Base64 encoding.",
+      xxd:     "Create a hex dump of a file or convert a hex dump back to binary.",
+      strings: "Print printable character sequences found in binary files.",
+      objdump: "Display information about object files.",
+      nm:      "List symbols from object files.",
+      readelf: "Display information about ELF format executable files.",
+      bc:      "Arbitrary-precision calculator language.",
+      expr:    "Evaluate arithmetic or string expressions.",
+      test:    "Evaluate a conditional expression (same as [ … ]).",
+      "[":     "Evaluate a conditional expression (same as test).",
+      "[[":    "Extended conditional expression with more features than test.",
+      true:    "Do nothing and exit successfully (returns exit code 0).",
+      false:   "Do nothing and exit with failure (returns exit code 1).",
+      xargs:   "Build and execute commands from standard input.",
+      tee:     "Read from standard input and write to both a file and standard output.",
+      screen:  "Terminal multiplexer — run multiple shell sessions in one terminal.",
+      tmux:    "Terminal multiplexer — manage multiple windows and panes in one terminal.",
+      vim:     "Vi IMproved — a powerful modal text editor.",
+      vi:      "Classic Unix text editor with modal editing.",
+      nano:    "Simple, beginner-friendly terminal text editor.",
+      emacs:   "Extensible, self-documenting text editor and computing environment.",
+      "|":     "Pipe — connect the output of one command to the input of another.",
+      ">":     "Output redirection — write command output to a file (overwrites).",
+      ">>":    "Output redirection — append command output to a file.",
+      "<":     "Input redirection — read input from a file instead of the keyboard.",
+      "2>":    "Redirect standard error (stderr) to a file.",
+      "&":     "Run a command in the background.",
+      "&&":    "Run the next command only if the previous command succeeded.",
+      "||":    "Run the next command only if the previous command failed.",
+      ";":     "Separate commands — run each command regardless of the previous result.",
+    };
+
+    // ---------------------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------------------
+
+    /** Extract the base command from an input string. */
+    function parseBaseCommand(input) {
+      const trimmed = input.trim();
+      if (!trimmed) return null;
+      // Handle common shell redirections / operators entered on their own
+      for (const op of ["|", ">", ">>", "<", "2>", "&&", "||", "&", ";"]) {
+        if (trimmed === op) return op;
+      }
+      // Drop leading "sudo" to get the real command
+      const tokens = trimmed.split(/\s+/);
+      if (tokens[0].toLowerCase() === "sudo" && tokens.length > 1) {
+        return tokens[1].toLowerCase();
+      }
+      return tokens[0].toLowerCase();
+    }
+
+    /** Build the HTML explanation for a command string. */
+    function explain(rawInput) {
+      const base = parseBaseCommand(rawInput);
+      if (!base) return null;
+
+      const description = COMMANDS[base];
+      if (description) {
+        return `<span class="cmd-name">${escHtml(base)}</span>\n${escHtml(description)}`;
+      }
+      return `<span class="unknown">Unknown command: <strong>${escHtml(base)}</strong></span>\nNo explanation available yet. Try a common Unix command.`;
+    }
+
+    function escHtml(str) {
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    // ---------------------------------------------------------------------------
+    // UI wiring
+    // ---------------------------------------------------------------------------
+
+    const input     = document.getElementById("command-input");
+    const output    = document.getElementById("output");
+    const explainBtn = document.getElementById("explain-btn");
+    const clearBtn  = document.getElementById("clear-btn");
+
+    function runExplain() {
+      const html = explain(input.value);
+      if (!html) {
+        output.className = "empty";
+        output.innerHTML = "Your explanation will appear here.";
+        return;
+      }
+      output.className = "";
+      output.innerHTML = html;
+    }
+
+    explainBtn.addEventListener("click", runExplain);
+
+    clearBtn.addEventListener("click", () => {
+      input.value = "";
+      output.className = "empty";
+      output.innerHTML = "Your explanation will appear here.";
+      input.focus();
+    });
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") runExplain();
+    });
+  </script>
+</body>
+</html>
