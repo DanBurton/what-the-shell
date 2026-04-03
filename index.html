@@ -150,6 +150,82 @@
       font-size: 0.8rem;
       text-align: center;
     }
+
+    /* ---- AI section ---- */
+    .ai-label {
+      color: #a371f7;
+      font-size: 0.85rem;
+      font-weight: bold;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.4rem;
+    }
+
+    .model-note {
+      color: #484f58;
+      font-size: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+
+    button#ai-explain-btn {
+      background: #6e40c9;
+      border-color: #6e40c9;
+      color: #fff;
+    }
+
+    button#ai-explain-btn:hover:not(:disabled) {
+      background: #8957e5;
+      border-color: #8957e5;
+    }
+
+    button#ai-explain-btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .progress-wrap {
+      background: #21262d;
+      border-radius: 4px;
+      height: 6px;
+      overflow: hidden;
+      margin: 0.75rem 0 0.4rem;
+      display: none;
+    }
+
+    .progress-wrap.visible {
+      display: block;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #6e40c9, #a371f7);
+      width: 0%;
+      transition: width 0.25s ease;
+      border-radius: 4px;
+    }
+
+    #ai-status {
+      color: #8b949e;
+      font-size: 0.8rem;
+      min-height: 1.2em;
+      margin-bottom: 0.5rem;
+      white-space: pre-wrap;
+    }
+
+    #ai-output {
+      min-height: 4rem;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    #ai-output.empty {
+      color: #484f58;
+    }
+
+    #ai-output.error {
+      color: #f85149;
+    }
   </style>
 </head>
 <body>
@@ -178,6 +254,22 @@
     <hr class="divider" />
 
     <div id="output" class="empty">Your explanation will appear here.</div>
+
+    <hr class="divider" />
+
+    <div class="ai-label">🤖 AI Explanation</div>
+    <p class="model-note">Runs entirely in your browser · model (~700 MB) is downloaded once and cached locally</p>
+
+    <div class="btn-row">
+      <button id="ai-explain-btn" type="button">AI Explain</button>
+    </div>
+
+    <div class="progress-wrap" id="progress-wrap">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+    <div id="ai-status"></div>
+
+    <div id="ai-output" class="empty">AI explanation will appear here.</div>
   </div>
 
   <footer>
@@ -567,6 +659,140 @@
 
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") runExplain();
+    });
+  </script>
+
+  <script type="module">
+    // ---------------------------------------------------------------------------
+    // WebLLM — in-browser AI explanation
+    // ---------------------------------------------------------------------------
+    import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+
+    const AI_MODEL = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
+
+    let engine = null;
+    let engineInitializing = false;
+
+    const commandInput  = document.getElementById("command-input");
+    const aiExplainBtn  = document.getElementById("ai-explain-btn");
+    const aiOutput      = document.getElementById("ai-output");
+    const aiStatus      = document.getElementById("ai-status");
+    const progressWrap  = document.getElementById("progress-wrap");
+    const progressFill  = document.getElementById("progress-fill");
+
+    function setStatus(text) {
+      aiStatus.textContent = text;
+    }
+
+    function showProgress(fraction, text) {
+      progressWrap.classList.add("visible");
+      progressFill.style.width = `${Math.min(Math.round(fraction * 100), 100)}%`;
+      if (text) setStatus(text);
+    }
+
+    function hideProgress() {
+      progressWrap.classList.remove("visible");
+      progressFill.style.width = "0%";
+    }
+
+    async function ensureEngine() {
+      if (engine) return engine;
+
+      // If another call is already loading, wait for it to finish.
+      if (engineInitializing) {
+        await new Promise(resolve => {
+          const id = setInterval(() => {
+            if (!engineInitializing) { clearInterval(id); resolve(); }
+          }, 250);
+        });
+        return engine;
+      }
+
+      engineInitializing = true;
+      setStatus("Loading AI model… (first load downloads ~700 MB, then cached)");
+
+      try {
+        engine = await webllm.CreateMLCEngine(AI_MODEL, {
+          initProgressCallback: ({ progress, text }) => {
+            showProgress(progress, text);
+          },
+        });
+        hideProgress();
+        setStatus("Model ready.");
+        setTimeout(() => { if (aiStatus.textContent === "Model ready.") setStatus(""); }, 2500);
+      } catch (err) {
+        engineInitializing = false;
+        throw err;
+      }
+
+      engineInitializing = false;
+      return engine;
+    }
+
+    async function runAiExplain() {
+      const command = commandInput.value.trim();
+      if (!command) return;
+
+      aiExplainBtn.disabled = true;
+      aiOutput.className = "";
+      aiOutput.textContent = "";
+
+      try {
+        const eng = await ensureEngine();
+
+        setStatus("Generating…");
+        const startTime = performance.now();
+        let chunkCount = 0;
+
+        const stream = await eng.chat.completions.create({
+          messages: [
+            {
+              role: "system",
+              content: "You are a concise shell command explainer. Explain what the given shell command does in plain English. Be brief and clear.",
+            },
+            {
+              role: "user",
+              content: `Explain this shell command:\n\n${command}`,
+            },
+          ],
+          stream: true,
+          temperature: 0.3,
+          max_tokens: 256,
+        });
+
+        for await (const chunk of stream) {
+          const delta = chunk.choices[0]?.delta?.content ?? "";
+          if (delta) {
+            aiOutput.textContent += delta;
+            chunkCount++;
+            const elapsed = (performance.now() - startTime) / 1000;
+            if (elapsed > 0.1) {
+              setStatus(`Generating… ${(chunkCount / elapsed).toFixed(1)} tok/s`);
+            }
+          }
+        }
+
+        const totalSec = ((performance.now() - startTime) / 1000).toFixed(1);
+        const tps = (chunkCount / parseFloat(totalSec)).toFixed(1);
+        setStatus(`Done — ${chunkCount} tokens · ${totalSec}s · ${tps} tok/s`);
+
+      } catch (err) {
+        aiOutput.className = "error";
+        aiOutput.textContent = `Error: ${err.message}`;
+        setStatus("");
+      } finally {
+        aiExplainBtn.disabled = false;
+      }
+    }
+
+    aiExplainBtn.addEventListener("click", runAiExplain);
+
+    // Also clear AI output when the main Clear button is pressed.
+    document.getElementById("clear-btn").addEventListener("click", () => {
+      aiOutput.className = "empty";
+      aiOutput.textContent = "AI explanation will appear here.";
+      setStatus("");
+      hideProgress();
     });
   </script>
 </body>
