@@ -18,7 +18,13 @@ import sys
 def get_man_page(command):
     """Return the plain-text man page for *command*."""
     env = {**os.environ, "MANPAGER": "cat", "MANWIDTH": "200"}
-    result = subprocess.run(["man", command], capture_output=True, text=True, env=env)
+    result = subprocess.run(
+        ["man", "--", command],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+        env=env,
+    )
     if result.returncode != 0:
         raise SystemExit(f"Error: no man page found for '{command}'")
     # Strip overstrike formatting (char + backspace + char = bold/underline in terminals)
@@ -174,6 +180,12 @@ def main():
 
     command = sys.argv[1]
 
+    if not re.match(r"^[a-zA-Z0-9._-]+$", command):
+        raise SystemExit(
+            f"Error: invalid command name '{command}'. "
+            "Only letters, digits, '.', '_', and '-' are allowed."
+        )
+
     print(f"Fetching man page for '{command}'…")
     man_text = get_man_page(command)
 
@@ -195,7 +207,7 @@ def main():
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     out_path = os.path.join(repo_root, "data", f"{command}.json")
 
-    with open(out_path, "w") as fh:
+    with open(out_path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2)
         fh.write("\n")
 
