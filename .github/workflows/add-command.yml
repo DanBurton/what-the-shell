@@ -45,4 +45,6 @@ jobs:
           title: "Add data for ${{ inputs.command }}"
           body: "Auto-generated args file for `${{ inputs.command }}` from its man page."
           commit-message: "Add data/${{ inputs.command }}.json"
-          add-paths: data/${{ inputs.command }}.json
+          add-paths: |
+            data/${{ inputs.command }}.json
+            data/commands.json
