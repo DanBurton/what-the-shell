@@ -691,7 +691,8 @@
     // WebLLM — in-browser AI explanation
     // ---------------------------------------------------------------------------
     import * as webllm from "https://esm.run/@mlc-ai/web-llm";
-    import { marked } from "https://esm.run/marked";
+    import { marked } from "https://esm.run/marked@17.0.5";
+    import DOMPurify from "https://esm.run/dompurify@3.3.3";
 
     const AI_MODEL = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
 
@@ -790,7 +791,7 @@
           const delta = chunk.choices[0]?.delta?.content ?? "";
           if (delta) {
             accumulated += delta;
-            aiOutput.innerHTML = marked.parse(accumulated);
+            aiOutput.innerHTML = DOMPurify.sanitize(marked.parse(accumulated));
             chunkCount++;
             const elapsed = (performance.now() - startTime) / 1000;
             if (elapsed > 0.1) {
