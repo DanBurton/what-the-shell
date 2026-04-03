@@ -1,0 +1,16 @@
+{
+  "command": "find",
+  "source": "man find",
+  "options": {
+    "-P": "taken from the properties of the symbolic link itself.",
+    "-L": "the link itself (unless it is a broken symbolic link or find is unable to examine the file to which the link points). Use of this option implies -noleaf. If you later use the -P option, -noleaf will still be in effect. If -L is in effect and find discovers a symbolic link to a subdirectory during its search, the subdirectory pointed to by the symbolic link will be searched.",
+    "-lname": "and -ilname predicates always to return false.",
+    "-H": "properties of the symbolic link itself. The only exception to this behaviour is when a file specified on the command line is a symbolic link, and the link can be resolved. For that situation, the information used is taken from whatever the link points to (that is, the link is followed). The information about the link itself is used as a fallback if the file pointed to by the symbolic link cannot be examined. If -H is in effect and one of the paths specified on the command line is a symbolic link to a directory, the contents of that directory will be examined (though of course -maxdepth 0 would prevent this).",
+    "-D": "Print diagnostic information; this can be helpful to diagnose problems with why find is not doing what you want. The list of debug options should be comma separated. Compatibility of the debug options is not guaranteed between releases of findutils. For a complete list of valid debug options, see the output of find -D help. Valid debug options include",
+    "-Olevel": "Enables query optimisation. The find program reorders tests to speed up execution while preserving the overall effect; that is, predicates with side effects are not reordered rela\u2010 tive to each other. The optimisations performed at each optimisation level are as follows.",
+    "-name": "and -regex) are performed first.",
+    "-fstype": "FOO predicate and specify a filesystem type FOO which is not known (that is, present in `/etc/mtab') at the time find starts, that predicate is equivalent to -false.",
+    "-o": "predicates which are likely to succeed are evaluated earlier, and for -a, predicates which are likely to fail are evaluated earlier.",
+    "-type": "f  is  assumed to be more likely to succeed than -type c).  The cost-based optimiser is currently being evaluated.  If it does not actually improve the performance of find, it"
+  }
+}
