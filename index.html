@@ -385,7 +385,13 @@
     // ---------------------------------------------------------------------------
 
     /** Commands that have a corresponding data file in data/<cmd>.json. */
-    const COMMANDS_WITH_DATA = new Set(["ls"]);
+    let COMMANDS_WITH_DATA = new Set();
+
+    /** Resolves when commands.json has been loaded. */
+    const commandsReady = fetch("data/commands.json")
+      .then(r => r.ok ? r.json() : [])
+      .catch(() => [])
+      .then(list => { COMMANDS_WITH_DATA = new Set(list); });
 
     /** Cache for loaded command data (null = not available or failed to load). */
     const commandDataCache = new Map();
@@ -396,6 +402,7 @@
      * Falls back gracefully if the file is absent or the fetch fails.
      */
     async function loadCommandData(cmd) {
+      await commandsReady;
       if (commandDataCache.has(cmd)) return commandDataCache.get(cmd);
       if (!COMMANDS_WITH_DATA.has(cmd)) {
         commandDataCache.set(cmd, null);

@@ -213,6 +213,24 @@ def main():
 
     print(f"Wrote {len(options)} options to {out_path}")
 
+    commands_path = os.path.join(repo_root, "data", "commands.json")
+    if os.path.exists(commands_path):
+        with open(commands_path, encoding="utf-8") as fh:
+            commands = json.load(fh)
+    else:
+        commands = []
+
+    added = command not in commands
+    commands = sorted(set(commands) | {command})
+    with open(commands_path, "w", encoding="utf-8") as fh:
+        fh.write("[\n")
+        for i, cmd in enumerate(commands):
+            suffix = "," if i < len(commands) - 1 else ""
+            fh.write(f'  "{cmd}"{suffix}\n')
+        fh.write("]\n")
+    if added:
+        print(f"Added '{command}' to {commands_path}")
+
 
 if __name__ == "__main__":
     main()
