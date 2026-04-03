@@ -215,9 +215,33 @@
       min-height: 4rem;
       font-size: 0.95rem;
       line-height: 1.6;
-      white-space: pre-wrap;
       word-break: break-word;
     }
+
+    #ai-output p { margin: 0 0 0.6em; }
+    #ai-output p:last-child { margin-bottom: 0; }
+    #ai-output code {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      padding: 0.1em 0.35em;
+      font-family: "Fira Mono", "Cascadia Code", monospace;
+      font-size: 0.9em;
+    }
+    #ai-output pre {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 0.75em 1em;
+      overflow-x: auto;
+    }
+    #ai-output pre code {
+      background: none;
+      border: none;
+      padding: 0;
+    }
+    #ai-output ul, #ai-output ol { padding-left: 1.5em; margin: 0 0 0.6em; }
+    #ai-output li { margin-bottom: 0.25em; }
 
     #ai-output.empty {
       color: #484f58;
@@ -667,6 +691,7 @@
     // WebLLM — in-browser AI explanation
     // ---------------------------------------------------------------------------
     import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+    import { marked } from "https://esm.run/marked";
 
     const AI_MODEL = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
 
@@ -760,10 +785,12 @@
           max_tokens: 256,
         });
 
+        let accumulated = "";
         for await (const chunk of stream) {
           const delta = chunk.choices[0]?.delta?.content ?? "";
           if (delta) {
-            aiOutput.textContent += delta;
+            accumulated += delta;
+            aiOutput.innerHTML = marked.parse(accumulated);
             chunkCount++;
             const elapsed = (performance.now() - startTime) / 1000;
             if (elapsed > 0.1) {
